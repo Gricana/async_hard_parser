@@ -40,16 +40,14 @@ async def main():
         f"Fetching products for category '{category}', city '{city}' "
         f"and minimum goods {min_goods}...")
 
-    # Initiate the product fetching and price retrieval task chain
     result = get_products_with_prices(category, city, min_goods)
 
-    # Wait for the task chain to complete and get the result
     try:
         products = result.get(timeout=300)
 
         if products:
             logging.info(f"Fetched {len(products)} products.")
-            save_result = save_products.delay(products, filename)
+            save_result = save_products.apply_async(args=[products, filename])
             save_result.get(timeout=300)
 
             logging.info(f"Products saved successfully in '{filename}'.")
