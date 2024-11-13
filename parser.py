@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from dataclasses import dataclass
 from typing import List, Dict
 
@@ -8,6 +7,7 @@ import aiohttp
 from auth import get_token
 from config import (API_URL, HEADERS, RETRIES, BATCH_SIZE,
                     MAX_CONCURRENT_REQUESTS)
+from log_handler import logger
 from utils import get_sign
 
 
@@ -57,17 +57,17 @@ async def fetch_data(url: str, params: dict, headers: dict,
                     if response.status == 200:
                         return await response.json()
                     else:
-                        logging.error(f"Error {response.status}: "
-                                      f"{response.reason}")
+                        logger.error(f"Error {response.status}: "
+                                     f"{response.reason}")
                         return {}
         except aiohttp.ClientError as e:
-            logging.error(f"HTTP error: {str(e)}")
+            logger.error(f"HTTP error: {str(e)}")
             attempt += 1
             if attempt < RETRIES:
-                logging.info(f"Retrying... ({attempt}/{RETRIES})")
+                logger.info(f"Retrying... ({attempt}/{RETRIES})")
                 await asyncio.sleep(2)
             else:
-                logging.error("Max retries reached. Giving up.")
+                logger.error("Max retries reached. Giving up.")
                 return {}
 
 
@@ -126,18 +126,18 @@ async def fetch_category_id(category_name: str, city_id: str) -> str | None:
     data = await fetch_data(url, params, headers)
 
     if 'data' not in data or not isinstance(data['data'], dict):
-        logging.error("Invalid response structure: "
-                      "'data' key not found or is not a dict.")
+        logger.error("Invalid response structure: "
+                     "'data' key not found or is not a dict.")
         return None
 
     category_id = find_category_id(data['data']['categories'], category_name)
 
     if category_id:
-        logging.info(f"Found category '{category_name}' "
-                     f"with ID: {category_id}")
+        logger.info(f"Found category '{category_name}' "
+                    f"with ID: {category_id}")
         return category_id
     else:
-        logging.warning(f"Category '{category_name}' not found.")
+        logger.warning(f"Category '{category_name}' not found.")
         return None
 
 
@@ -164,17 +164,17 @@ async def fetch_products(category_id: str, city_id: str, min_goods: int) \
     data = await fetch_data(url, params, headers)
 
     if 'data' not in data or 'goods' not in data['data']:
-        logging.error("Invalid response structure. "
-                      "'data' or 'goods' key not found.")
+        logger.error("Invalid response structure. "
+                     "'data' or 'goods' key not found.")
         return []
 
     total_pages = data['data'].get('total_pages', 1)
-    logging.info(f"Total number of pages: {total_pages}")
+    logger.info(f"Total number of pages: {total_pages}")
     total_items = data['data'].get('total_items', 0)
-    logging.info(f"Total number of products: {total_items}")
+    logger.info(f"Total number of products: {total_items}")
 
     if total_items <= min_goods:
-        logging.info(f"There are less than {min_goods} products available")
+        logger.info(f"There are less than {min_goods} products available")
         return []
 
     products = await fetch_and_add_products(url, params, headers, 1)
@@ -188,7 +188,7 @@ async def fetch_products(category_id: str, city_id: str, min_goods: int) \
 
     products.extend(additional_products)
 
-    logging.info(f"Total available products: {len(products)}")
+    logger.info(f"Total available products: {len(products)}")
     return products
 
 
@@ -203,7 +203,7 @@ async def fetch_and_add_products(url: str, params: dict, headers: dict,
     :param page: Page number.
     :return: List of available products.
     """
-    logging.info(f"Fetching data from page {page}...")
+    logger.info(f"Fetching data from page {page}...")
     params['page'] = page
     del params['sign']
     params['sign'] = get_sign(params)
@@ -213,10 +213,10 @@ async def fetch_and_add_products(url: str, params: dict, headers: dict,
     products = []
     if 'data' in data and 'goods' in data['data']:
         products = add_products_from_data(data['data']['goods'])
-        logging.info(f"Found {len(products)} products on page {page}.")
+        logger.info(f"Found {len(products)} products on page {page}.")
     else:
-        logging.warning(f"No products found on page {page} "
-                        f"or response format is incorrect.")
+        logger.warning(f"No products found on page {page} "
+                       f"or response format is incorrect.")
 
     return products
 
@@ -238,7 +238,7 @@ def add_products_from_data(goods: List[dict]) -> List[Product]:
                 brand=item.get('brand_name', 'Unknown')
             )
             products.append(product)
-            logging.info(f"Added product: (ID: {product.id})")
+            logger.info(f"Added product: (ID: {product.id})")
     return products
 
 
@@ -273,13 +273,16 @@ async def fetch_prices(product_ids: List[int]) -> Dict[int, Dict[str, int]]:
                         active_offer_id = product.get('active_offer_id')
                         if active_offer_id:
                             prices[active_offer_id] = dict(
-                                regular_price=product['variants'][0]['price']['old'],
-                                promo_price=product['variants'][0]['price']['actual']
+                                regular_price=product['variants'][0]['price'][
+                                    'old'],
+                                promo_price=product['variants'][0]['price'][
+                                    'actual']
                             )
-                            logging.info(f"Prices for product ID {active_offer_id}")
+                            logger.info(
+                                f"Prices for product ID {active_offer_id}")
             except Exception as e:
-                logging.warning(f"Error fetching prices "
-                                f"for batch {batch_ids}: {str(e)}")
+                logger.warning(f"Error fetching prices "
+                               f"for batch {batch_ids}: {str(e)}")
                 await asyncio.sleep(1)
 
     # Run queries in parallel for each group
@@ -290,7 +293,7 @@ async def fetch_prices(product_ids: List[int]) -> Dict[int, Dict[str, int]]:
 
     await asyncio.gather(*tasks)  # Wait for all requests to complete
 
-    logging.info(f"Fetched prices for {len(prices)} products.")
+    logger.info(f"Fetched prices for {len(prices)} products.")
     return prices
 
 
@@ -313,7 +316,7 @@ async def combine_product_and_prices(products: List[Product],
     :return: A list of Product objects with updated price attributes.
     :raises: None
     """
-    logging.info("Updating products with prices")
+    logger.info("Updating products with prices")
 
     for product in products:
         price_info = prices.get(product.id)
@@ -321,7 +324,7 @@ async def combine_product_and_prices(products: List[Product],
             product.regular_price = price_info.get('regular_price', 0)
             product.promo_price = price_info.get('promo_price', 0)
         else:
-            logging.warning(f"No price information found "
-                            f"for product ID {product.id}")
+            logger.warning(f"No price information found "
+                           f"for product ID {product.id}")
 
     return products
