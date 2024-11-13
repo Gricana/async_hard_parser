@@ -29,8 +29,8 @@ BATCH_SIZE = 200  # Number of items to process at one time
 MAX_CONCURRENT_REQUESTS = 5
 
 RABBITMQ_CREDENTIALS = {
-    'USER': os.environ.get('RABBITMQ_USER'),
-    'PASSWORD': os.environ.get('RABBITMQ_PASSWORD')
+    'USER': os.environ.get('RABBITMQ_USER', 'guest'),
+    'PASSWORD': os.environ.get('RABBITMQ_PASSWORD', 'guest')
 }
 RABBITMQ_URL = (f"amqp://{RABBITMQ_CREDENTIALS['USER']}:"
                 f"{RABBITMQ_CREDENTIALS['PASSWORD']}@localhost:5672/")
